@@ -35,8 +35,6 @@ variable "github_app" {
   type = object({
     key_base64     = string
     id             = string
-    client_id      = string
-    client_secret  = string
     webhook_secret = string
   })
 }
@@ -48,7 +46,13 @@ variable "scale_down_schedule_expression" {
 }
 
 variable "minimum_running_time_in_minutes" {
-  description = "The time an ec2 action runner should be running at minimum before terminated if non busy."
+  description = "The time an ec2 action runner should be running at minimum before terminated if not busy."
+  type        = number
+  default     = 5
+}
+
+variable "runner_boot_time_in_minutes" {
+  description = "The minimum time for an EC2 runner to boot and register as a runner."
   type        = number
   default     = 5
 }
@@ -143,20 +147,8 @@ variable "runners_maximum_count" {
   default     = 3
 }
 
-variable "encrypt_secrets" {
-  description = "Encrypt secret variables for lambda's such as secrets and private keys."
-  type        = bool
-  default     = true
-}
-
-variable "manage_kms_key" {
-  description = "Let the module manage the KMS key."
-  type        = bool
-  default     = true
-}
-
-variable "kms_key_id" {
-  description = "Custom KMS key to encrypted lambda secrets, if not provided and `encrypt_secrets` = `true` a KMS key will be created by the module. Secrets will be encrypted with a context `Environment = var.environment`."
+variable "kms_key_arn" {
+  description = "Optional CMK Key ARN to be used for Parameter Store. This key must be in the current account."
   type        = string
   default     = null
 }
@@ -319,6 +311,12 @@ variable "ghes_url" {
   default     = null
 }
 
+variable "ghes_ssl_verify" {
+  description = "GitHub Enterprise SSL verification. Set to 'false' when custom certificate (chains) is used for GitHub Enterprise Server (insecure)."
+  type        = bool
+  default     = true
+}
+
 variable "lambda_subnet_ids" {
   description = "List of subnets in which the action runners will be launched, the subnets needs to be subnets in the `vpc_id`."
   type        = list(string)
@@ -357,6 +355,50 @@ variable "volume_size" {
 
 variable "instance_types" {
   description = "List of instance types for the action runner."
-  type        = set(string)
+  type        = list(string)
   default     = null
+}
+
+variable "repository_white_list" {
+  description = "List of repositories allowed to use the github app"
+  type        = list(string)
+  default     = []
+}
+
+variable "delay_webhook_event" {
+  description = "The number of seconds the event accepted by the webhook is invisible on the queue before the scale up lambda will receive the event."
+  type        = number
+  default     = 30
+}
+
+variable "runner_egress_rules" {
+  description = "List of egress rules for the GitHub runner instances."
+  type = list(object({
+    cidr_blocks      = list(string)
+    ipv6_cidr_blocks = list(string)
+    prefix_list_ids  = list(string)
+    from_port        = number
+    protocol         = string
+    security_groups  = list(string)
+    self             = bool
+    to_port          = number
+    description      = string
+  }))
+  default = [{
+    cidr_blocks      = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::/0"]
+    prefix_list_ids  = null
+    from_port        = 0
+    protocol         = "-1"
+    security_groups  = null
+    self             = null
+    to_port          = 0
+    description      = null
+  }]
+}
+
+variable "disable_check_wokflow_job_labels" {
+  description = "Disable the the check of workflow labels for received workflow job events."
+  type        = bool
+  default     = false
 }

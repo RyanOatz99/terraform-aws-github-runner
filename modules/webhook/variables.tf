@@ -8,7 +8,7 @@ variable "environment" {
   type        = string
 }
 
-variable "github_app_webhook_secret" {
+variable "github_app_webhook_secret_arn" {
   type = string
 }
 
@@ -45,17 +45,9 @@ variable "role_permissions_boundary" {
 }
 
 variable "role_path" {
-  description = "The path that will be added to the role, if not set the environment name will be used."
+  description = "The path that will be added to the role; if not set, the environment name will be used."
   type        = string
   default     = null
-}
-
-variable "encryption" {
-  description = "KMS key to encrypted lambda environment secrets. Either provide a key and `encrypt` set to `true`. Or set the key to `null` and encrypt to `false`."
-  type = object({
-    kms_key_id = string
-    encrypt    = bool
-  })
 }
 
 variable "logging_retention_in_days" {
@@ -79,3 +71,26 @@ variable "webhook_lambda_s3_object_version" {
   default     = null
 }
 
+variable "repository_white_list" {
+  description = "List of repositories allowed to use the github app"
+  type        = list(string)
+  default     = []
+}
+
+variable "kms_key_arn" {
+  description = "Optional CMK Key ARN to be used for Parameter Store."
+  type        = string
+  default     = null
+}
+
+variable "runner_extra_labels" {
+  description = "Extra labels for the runners (GitHub). Separate each label by a comma"
+  type        = string
+  default     = ""
+}
+
+variable "disable_check_wokflow_job_labels" {
+  description = "Disable the the check of workflow labels."
+  type        = bool
+  default     = false
+}
