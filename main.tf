@@ -7,6 +7,11 @@ locals {
   runner_architecture  = substr(var.instance_type, 0, 2) == "a1" || substr(var.instance_type, 1, 2) == "6g" ? "arm64" : "x64"
 
   ami_filter = length(var.ami_filter) > 0 ? var.ami_filter : local.runner_architecture == "arm64" ? { name = ["amzn2-ami-hvm-2*-arm64-gp2"] } : { name = ["amzn2-ami-hvm-2.*-x86_64-ebs"] }
+
+  github_app_parameters = {
+    id         = module.ssm.parameters.github_app_id
+    key_base64 = module.ssm.parameters.github_app_key_base64
+  }
 }
 
 resource "random_string" "random" {
@@ -17,7 +22,7 @@ resource "random_string" "random" {
 
 resource "aws_sqs_queue" "queued_builds" {
   name                        = "${var.environment}-queued-builds.fifo"
-  delay_seconds               = 30
+  delay_seconds               = var.delay_webhook_event
   visibility_timeout_seconds  = var.runners_scale_up_lambda_timeout
   fifo_queue                  = true
   receive_wait_time_seconds   = 10
@@ -26,19 +31,25 @@ resource "aws_sqs_queue" "queued_builds" {
   tags = var.tags
 }
 
+module "ssm" {
+  source = "./modules/ssm"
+
+  kms_key_arn = var.kms_key_arn
+  environment = var.environment
+  github_app  = var.github_app
+  tags        = local.tags
+}
+
 module "webhook" {
   source = "./modules/webhook"
 
   aws_region  = var.aws_region
   environment = var.environment
   tags        = local.tags
-  encryption = {
-    kms_key_id = local.kms_key_id
-    encrypt    = var.encrypt_secrets
-  }
+  kms_key_arn = var.kms_key_arn
 
-  sqs_build_queue           = aws_sqs_queue.queued_builds
-  github_app_webhook_secret = var.github_app.webhook_secret
+  sqs_build_queue               = aws_sqs_queue.queued_builds
+  github_app_webhook_secret_arn = module.ssm.parameters.github_app_webhook_secret.arn
 
   lambda_s3_bucket                 = var.lambda_s3_bucket
   webhook_lambda_s3_key            = var.webhook_lambda_s3_key
@@ -46,9 +57,12 @@ module "webhook" {
   lambda_zip                       = var.webhook_lambda_zip
   lambda_timeout                   = var.webhook_lambda_timeout
   logging_retention_in_days        = var.logging_retention_in_days
+  runner_extra_labels              = var.runner_extra_labels
+  disable_check_wokflow_job_labels = var.disable_check_wokflow_job_labels
 
   role_path                 = var.role_path
   role_permissions_boundary = var.role_permissions_boundary
+  repository_white_list     = var.repository_white_list
 }
 
 module "runners" {
@@ -59,10 +73,6 @@ module "runners" {
   subnet_ids  = var.subnet_ids
   environment = var.environment
   tags        = local.tags
-  encryption = {
-    kms_key_id = local.kms_key_id
-    encrypt    = var.encrypt_secrets
-  }
 
   s3_bucket_runner_binaries   = module.runner_binaries.bucket
   s3_location_runner_binaries = local.s3_action_runner_url
@@ -77,7 +87,7 @@ module "runners" {
   ami_owners          = var.ami_owners
 
   sqs_build_queue                      = aws_sqs_queue.queued_builds
-  github_app                           = var.github_app
+  github_app_parameters                = local.github_app_parameters
   enable_organization_runners          = var.enable_organization_runners
   scale_down_schedule_expression       = var.scale_down_schedule_expression
   minimum_running_time_in_minutes      = var.minimum_running_time_in_minutes
@@ -86,6 +96,7 @@ module "runners" {
   runners_maximum_count                = var.runners_maximum_count
   idle_config                          = var.idle_config
   enable_ssm_on_runners                = var.enable_ssm_on_runners
+  egress_rules                         = var.runner_egress_rules
   runner_additional_security_group_ids = var.runner_additional_security_group_ids
   volume_size                          = var.volume_size
 
@@ -116,7 +127,10 @@ module "runners" {
 
   runner_iam_role_managed_policy_arns = var.runner_iam_role_managed_policy_arns
 
-  ghes_url = var.ghes_url
+  ghes_url        = var.ghes_url
+  ghes_ssl_verify = var.ghes_ssl_verify
+
+  kms_key_arn = var.kms_key_arn
 }
 
 module "runner_binaries" {

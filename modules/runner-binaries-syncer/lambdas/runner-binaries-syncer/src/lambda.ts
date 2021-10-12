@@ -1,7 +1,11 @@
 import { handle } from './syncer/handler';
 
 // eslint-disable-next-line
-module.exports.handler = async (event: any, context: any, callback: any): Promise<any> => {
-  await handle();
-  return callback();
+export const handler = async (event: any, context: any, callback: any): Promise<void> => {
+  try {
+    await handle();
+    callback(null);
+  } catch (e) {
+    callback(e);
+  }
 };
